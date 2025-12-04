@@ -6,13 +6,13 @@ export const addMemorySchema = z.object({
     sourceId: z.string(),
     timestamp: z.coerce.date(),
     content: z.string(),
-    metadata: {
+    metadata: z.object( {
         title: z.string().optional(),
         origin: z.string().optional(),
         tags: z.string(),
         category: z.array(z.string()),
         others: z.string().optional()
-    }
+    })
 })
 
 
@@ -23,13 +23,13 @@ export const updateMemorySchema = z.object({
     sourceId: z.string().optional(),
     timestamp: z.coerce.date().optional(),
     content: z.string().optional(),
-    metadata: {
+    metadata: z.object({
         title: z.string().optional(),
         origin: z.string().optional(),
         tags: z.string().optional(),
         category: z.array(z.string()).optional(),
         others: z.string().optional()
-    }
+    })
 })
 
 export const deleteMemorySchema = z.object({
