@@ -12,6 +12,9 @@ Memory Engine is a TypeScript/Bun service that ingests, stores, and retrieves â€
 - Configurable models for embedding, rerank, fact extraction, and answer generation
 
 ## Architecture
+<img width="2816" height="1536" alt="Memory Architecture" src="https://github.com/user-attachments/assets/647d68bb-cea1-45c6-b7ac-b817ebdac7e0" />
+
+
 - **API Layer**: Express routes under `/api` with controllers handling validation and responses.
 - **Services**:
   - Memory Service: core orchestration (create, batch ingest, search, ask/answer, dedupe).
