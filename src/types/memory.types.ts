@@ -29,7 +29,7 @@ export const updateMemorySchema = z.object({
         tags: z.string().optional(),
         category: z.array(z.string()).optional(),
         others: z.string().optional()
-    })
+    }).optional()
 })
 
 export const deleteMemorySchema = z.object({
@@ -51,7 +51,7 @@ export const addMemoriesSchema = z.object({
         role: z.enum(["system", "user", "assistant"]),
         content: z.string(),
     })),
-    userId: z.number().optional(),
+    userId: z.number(),
     agentId: z.string().optional(),
     runId: z.string().optional(),
     source: z.string(),

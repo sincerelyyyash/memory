@@ -53,6 +53,7 @@ async ensureCollection(){
         }else {
             console.log("Qdrant collection already exists")
         }
+        this.isInitialised = true;
     }catch(err) {
         throw new Error("Failed to init qdrant collection")
     }

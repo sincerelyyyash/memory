@@ -39,20 +39,22 @@ export const createMemoryWithEmbedding = async(input: CreateMemoryInput) => {
 
     const existing = await prisma.memory.findFirst({
         where: { AND: andFilters },
-    })
+    });
 
-    if(existing) {
+    if (existing) {
         return {
             memory: existing,
-            isDuplicated: true,
-            embeddingResults: {
-                embedding: [],
-                vectorId: `memory_${existing.id}`,
-                hash: existing.contentHash,
-                success: true,
-                isDuplicate: true,
-                existingMemoryId: existing.id, 
-            },
+            isDuplicate: true,
+            embeddingResults: [
+                {
+                    embedding: [],
+                    vectorId: `memory_${existing.id}`,
+                    hash: existing.contentHash,
+                    success: true,
+                    isDuplicate: true,
+                    existingMemoryId: existing.id,
+                },
+            ],
         };
     }
 
@@ -148,26 +150,86 @@ export const createMemoryWithEmbedding = async(input: CreateMemoryInput) => {
     }
 };
 
-export const updateMemory = async(input: UpdateMemoryInput) => {
-    const {id, content, ...rest} = input;
+export const updateMemory = async (input: UpdateMemoryInput) => {
+    const { id, content, ...rest } = input;
 
-    if(!id) throw new Error("Memory id is required");
+    if (!id) throw new Error("Memory id is required");
 
-    let contentHashUpdate: {contentHash?: string} = {};
-    if(typeof content === "string"){
-        contentHashUpdate = {contentHash: generateContentHash(content)};
-    }
+    const existing = await prisma.memory.findUnique({ where: { id } });
+    if (!existing) throw new Error("Memory not found");
+
+    const contentChanged = typeof content === "string";
+    const contentHash = contentChanged ? generateContentHash(content) : undefined;
 
     const updated = await prisma.memory.update({
-        where: {id},
+        where: { id },
         data: {
             ...rest,
-            ...contentHashUpdate,
+            ...(contentChanged ? { content } : {}),
+            ...(contentHash ? { contentHash } : {}),
             timestamp: rest.timestamp ? new Date(rest.timestamp) : undefined,
         },
     });
 
-    return updated;
+    if (!contentChanged) {
+        return updated;
+    }
+
+    const extractedFacts = await extractFacts(content, {
+        title: rest.title ?? existing.title,
+        source: rest.source ?? existing.source,
+        timestamp: (rest.timestamp ?? existing.timestamp)?.toString(),
+    });
+
+    if (extractedFacts.length === 0) {
+        const updateMemoryNoFacts = await prisma.memory.update({
+            where: { id },
+            data: { embeddingRef: updated.id },
+        });
+        return updateMemoryNoFacts;
+    }
+
+    await Promise.all(
+        extractedFacts.map((fact, index) =>
+            embeddingService.generateAndStore(
+                fact.fact,
+                `memory_${id}_fact_${index}`,
+                {
+                    memoryId: id,
+                    userId: updated.userId,
+                    source: updated.source,
+                    sourceId: updated.sourceId,
+                    timestamp: updated.timestamp
+                        ? updated.timestamp.toISOString()
+                        : new Date().toISOString(),
+                    agentId: updated.attribute?.agentId,
+                    runId: updated.attribute?.runId,
+                    role: updated.attribute?.role,
+                    data: fact.fact,
+                    hash: contentHash ?? updated.contentHash,
+                    factIndex: index,
+                    fact: fact.fact,
+                    importance: fact.importance ?? updated.importance ?? 0,
+                    confidence: fact.confidence ?? updated.confidence ?? 0,
+                    contentHash: contentHash ?? updated.contentHash,
+                },
+                updated.userId,
+                false,
+            ),
+        ),
+    );
+
+    const updatedWithEmbeddings = await prisma.memory.update({
+        where: {
+            id,
+        },
+        data: {
+            embeddingRef: updated.id,
+            summary: rest.summary ?? extractedFacts[0]?.fact ?? updated.summary,
+        },
+    });
+
+    return updatedWithEmbeddings;
 };
 
 export const deleteMemory = async(id: number) => {
