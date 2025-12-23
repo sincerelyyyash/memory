@@ -153,9 +153,9 @@ export const updateMemory = async(input: UpdateMemoryInput) => {
 
     if(!id) throw new Error("Memory id is required");
 
-    let contentHashUpdate: {contenHash?: string} = {};
+    let contentHashUpdate: {contentHash?: string} = {};
     if(typeof content === "string"){
-        contentHashUpdate = {contenHash: generateContentHash(content)};
+        contentHashUpdate = {contentHash: generateContentHash(content)};
     }
 
     const updated = await prisma.memory.update({
