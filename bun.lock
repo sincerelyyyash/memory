@@ -4,6 +4,7 @@
     "": {
       "name": "memory",
       "dependencies": {
+        "@openrouter/sdk": "^0.3.15",
         "@qdrant/js-client-rest": "^1.16.2",
         "@types/dotenv": "^8.2.3",
         "@types/express": "^5.0.6",
@@ -21,6 +22,8 @@
     },
   },
   "packages": {
+    "@openrouter/sdk": ["@openrouter/sdk@0.3.15", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-tmiMQGu6L1fHD9NpIABN9LALEZitqM27CFebSVyJTQDcxCcR3m1F6v1O1MnOlLmedCFU+/BojniRGFAXo1F3Bw=="],
+
     "@qdrant/js-client-rest": ["@qdrant/js-client-rest@1.16.2", "", { "dependencies": { "@qdrant/openapi-typescript-fetch": "1.2.6", "undici": "^6.0.0" }, "peerDependencies": { "typescript": ">=4.7" } }, "sha512-Zm4wEZURrZ24a+Hmm4l1QQYjiz975Ep3vF0yzWR7ICGcxittNz47YK2iBOk8kb8qseCu8pg7WmO1HOIsO8alvw=="],
 
     "@qdrant/openapi-typescript-fetch": ["@qdrant/openapi-typescript-fetch@1.2.6", "", {}, "sha512-oQG/FejNpItrxRHoyctYvT3rwGZOnK4jr3JdppO/c78ktDvkWiPXPHNsrDf33K9sZdRb6PR7gi4noIapu5q4HA=="],
