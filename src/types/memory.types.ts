@@ -106,6 +106,15 @@ export const askMemorySchema = z.object({
         topK: z.number().optional(),
         model: z.string().optional(),
     }).optional(),
+    procedural: z.object({
+        store: z.boolean().optional(),
+        summarize: z.boolean().optional(),
+        includeHistory: z.boolean().optional(),
+        taskObjective: z.string().optional(),
+        stepNumber: z.number().optional(),
+        action: z.string().optional(),
+        context: z.string().optional(),
+    }).optional(),
 });
 
 export type CreateMemoryInput = {
@@ -181,7 +190,28 @@ export type RerankOptions = {
     model?: string;
 };
 
+export type ProceduralOptions = {
+    store?: boolean;
+    summarize?: boolean;
+    includeHistory?: boolean;
+    taskObjective?: string;
+    stepNumber?: number;
+    action?: string;
+    context?: string;
+};
+
 export type GenerateAnswerInput = Omit<MemorySearchInput, "query"> & {
     query?: string;
     rerank?: RerankOptions;
+    procedural?: ProceduralOptions;
+};
+
+export type ProceduralStep = {
+    stepNumber: number;
+    action: string;
+    query: string;
+    answer: string;
+    keyFindings: string[];
+    context?: string;
+    timestamp: string;
 };

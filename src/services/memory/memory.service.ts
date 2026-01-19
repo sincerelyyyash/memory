@@ -4,7 +4,7 @@ import { getEmbeddingService } from "../embedding/embedding.service";
 import { generateContentHash } from "../../utils/hash";
 import { extractFacts } from "../extraction/factExtraction.service";
 import { openaiClient } from "../embedding/openai";
-import { MEMORY_ANSWER_SYSTEM_PROMPT, RERANK_SYSTEM_PROMPT } from "../../config/prompts";
+import { MEMORY_ANSWER_SYSTEM_PROMPT, RERANK_SYSTEM_PROMPT, PROCEDURAL_MEMORY_SYSTEM_PROMPT } from "../../config/prompts";
 import type {
     CreateMemoryInput,
     UpdateMemoryInput,
@@ -13,6 +13,7 @@ import type {
     RetrievedMemory,
     RerankOptions,
     GenerateAnswerInput,
+    ProceduralStep,
 } from "../../types/memory.types";
 
 const prisma = getPrismaClient();
@@ -22,6 +23,7 @@ const ANSWER_MODEL = process.env.ANSWER_MODEL ?? "gpt-4o-mini";
 const RERANK_ENABLED_DEFAULT = process.env.RERANK_ENABLED === "true";
 const RERANK_MODEL_DEFAULT = process.env.RERANK_MODEL ?? "gpt-4o-mini";
 const RERANK_TOP_K_DEFAULT = Number(process.env.RERANK_TOP_K ?? 0);
+const PROCEDURAL_MODEL = process.env.PROCEDURAL_MODEL ?? "gpt-4o-mini";
 
 export const createMemoryWithEmbedding = async(input: CreateMemoryInput) => {
     const contentHash = generateContentHash(input.content);
@@ -475,6 +477,96 @@ export const searchMemories = async (
     });
 };
 
+const storeProceduralStep = async (
+    question: string,
+    answer: string,
+    memories: RetrievedMemory[],
+    searchInput: GenerateAnswerInput,
+) => {
+    const proc = searchInput.procedural;
+    if (!proc?.store || !searchInput.userId || !searchInput.agentId || !searchInput.runId) {
+        return null;
+    }
+
+    const stepData: ProceduralStep = {
+        stepNumber: proc.stepNumber ?? Date.now(),
+        action: proc.action ?? "memory_query",
+        query: question,
+        answer,
+        keyFindings: memories.slice(0, 5).map(m => m.text),
+        context: proc.context,
+        timestamp: new Date().toISOString(),
+    };
+
+    const contentHash = generateContentHash(
+        `${searchInput.agentId}_${searchInput.runId}_${stepData.stepNumber}_${question}`
+    );
+
+    const existing = await prisma.memory.findFirst({
+        where: { contentHash },
+    });
+
+    if (existing) {
+        return { memoryId: existing.id, isDuplicate: true };
+    }
+
+    const memory = await prisma.memory.create({
+        data: {
+            userId: searchInput.userId,
+            source: "procedural",
+            sourceId: `${searchInput.runId}_step_${stepData.stepNumber}`,
+            timestamp: new Date(),
+            contentUrl: "",
+            title: proc.taskObjective ?? "",
+            origin: searchInput.agentId,
+            tags: ["procedural", "step"],
+            category: ["procedural"],
+            attribute: {
+                agentId: searchInput.agentId,
+                runId: searchInput.runId,
+                taskObjective: proc.taskObjective,
+                stepNumber: stepData.stepNumber,
+                action: stepData.action,
+                context: stepData.context,
+                keyFindings: stepData.keyFindings,
+            },
+            summary: `Step ${stepData.stepNumber}: ${stepData.action} - ${answer.slice(0, 200)}`,
+            type: "procedural",
+            importance: 0.5,
+            confidence: 1,
+            embeddingRef: 0,
+            contentHash,
+            createdAt: new Date(),
+        },
+    });
+
+    const stepContent = `Step ${stepData.stepNumber}: ${stepData.action}\nQuery: ${question}\nAnswer: ${answer}`;
+
+    await embeddingService.generateAndStore(
+        stepContent,
+        `procedural_${memory.id}`,
+        {
+            memoryId: memory.id,
+            userId: searchInput.userId,
+            agentId: searchInput.agentId,
+            runId: searchInput.runId,
+            type: "procedural",
+            stepNumber: stepData.stepNumber,
+            taskObjective: proc.taskObjective,
+            data: stepContent,
+        },
+        searchInput.userId,
+        false,
+    );
+
+    await prisma.memory.update({
+        where: { id: memory.id },
+        data: { embeddingRef: memory.id },
+    });
+
+    return { memoryId: memory.id, isDuplicate: false, stepNumber: stepData.stepNumber };
+};
+
 export const askMemory = async (
     question: string,
     searchInput: GenerateAnswerInput,
@@ -512,6 +604,30 @@ export const askMemory = async (
 
     const answer = completion.choices?.[0]?.message?.content?.trim() ?? "";
 
+    const proc = searchInput.procedural;
+    let procedural: {
+        stored?: { memoryId: number; isDuplicate: boolean; stepNumber?: number } | null;
+        summary?: string;
+        history?: MemoryRecord[];
+    } | null = null;
+
+    if (proc && searchInput.userId && searchInput.agentId && searchInput.runId) {
+        procedural = {};
+
+        if (proc.store) {
+            procedural.stored = await storeProceduralStep(question, answer, rerankedMemories, searchInput);
+        }
+
+        if (proc.includeHistory) {
+            procedural.history = await getProceduralSteps(searchInput.userId, searchInput.agentId, searchInput.runId);
+        }
+
+        if (proc.summarize) {
+            const summaryResult = await generateProceduralSummary(searchInput.userId, searchInput.agentId, searchInput.runId);
+            procedural.summary = summaryResult.summary;
+        }
+    }
+
     return {
         answer,
         memories: rerankedMemories,
@@ -519,5 +635,135 @@ export const askMemory = async (
         rerankModel: searchInput.rerank?.enabled
             ? searchInput.rerank?.model ?? RERANK_MODEL_DEFAULT
             : undefined,
+        procedural,
     };
+};
+
+type MemoryRecord = {
+    id: number;
+    userId: number;
+    agentId: string | null;
+    runId: string | null;
+    role: string | null;
+    source: string;
+    sourceId: string;
+    timestamp: Date;
+    contentUrl: string;
+    title: string;
+    origin: string;
+    tags: string[];
+    category: string[];
+    attribute: unknown;
+    summary: string;
+    type: string;
+    importance: number;
+    confidence: number;
+    embeddingRef: number;
+    contentHash: string;
+    createdAt: Date;
+    updatedAt: Date;
+};
+
+const getProceduralSteps = async (
+    userId: number,
+    agentId: string,
+    runId: string,
+): Promise<MemoryRecord[]> => {
+    const steps = await prisma.memory.findMany({
+        where: {
+            userId,
+            type: "procedural",
+            attribute: {
+                path: ["agentId"],
+                equals: agentId,
+            },
+        },
+        orderBy: { timestamp: "asc" },
+    });
+
+    return steps.filter((s: MemoryRecord) => {
+        const attr = s.attribute as Record<string, unknown>;
+        return attr?.runId === runId;
+    });
+};
+
+const generateProceduralSummary = async (
+    userId: number,
+    agentId: string,
+    runId: string,
+) => {
+    const steps = await getProceduralSteps(userId, agentId, runId);
+
+    const firstStep = steps[0];
+    if (!firstStep) {
+        return { summary: "No execution history found", stepsCount: 0 };
+    }
+
+    const firstAttr = firstStep.attribute as Record<string, unknown>;
+    const taskObjective = (firstAttr?.taskObjective as string) || "Unknown task";
+
+    const formattedSteps = steps.map((step: MemoryRecord, idx: number) => {
+        const attr = step.attribute as Record<string, unknown>;
+        const keyFindings = (attr?.keyFindings as string[]) || [];
+        return `${idx + 1}. **Agent Action**: ${attr?.action || "Unknown action"}
+   **Action Result**: ${step.summary}
+   **Key Findings**: ${keyFindings.join(", ") || "None"}
+   **Current Context**: ${attr?.context || "N/A"}`;
+    }).join("\n\n");
+
+    const client = openaiClient.getClient();
+    const completion = await client.chat.completions.create({
+        model: PROCEDURAL_MODEL,
+        temperature: 0.1,
+        messages: [
+            { role: "system", content: PROCEDURAL_MEMORY_SYSTEM_PROMPT },
+            {
+                role: "user",
+                content: `Task Objective: ${taskObjective}\n\nExecution History (${steps.length} steps):\n\n${formattedSteps}`,
+            },
+        ],
+    });
+
+    const summary = completion.choices?.[0]?.message?.content?.trim() ?? "";
+
+    const contentHash = generateContentHash(`summary_${agentId}_${runId}_${steps.length}`);
+
+    await prisma.memory.upsert({
+        where: { contentHash },
+        create: {
+            userId,
+            source: "procedural_summary",
+            sourceId: `${runId}_summary`,
+            timestamp: new Date(),
+            contentUrl: "",
+            title: taskObjective,
+            origin: agentId,
+            tags: ["procedural", "summary"],
+            category: ["procedural_summary"],
+            attribute: {
+                agentId,
+                runId,
+                taskObjective,
+                totalSteps: steps.length,
+            },
+            summary,
+            type: "procedural_summary",
+            importance: 0.8,
+            confidence: 1,
+            embeddingRef: 0,
+            contentHash,
+            createdAt: new Date(),
+        },
+        update: {
+            summary,
+            attribute: {
+                agentId,
+                runId,
+                taskObjective,
+                totalSteps: steps.length,
+            },
+        },
+    });
+
+    return { summary, stepsCount: steps.length, taskObjective };
 };

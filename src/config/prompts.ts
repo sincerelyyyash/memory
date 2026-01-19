@@ -641,7 +641,10 @@ Please note to return the IDs in the output from the input IDs only and do not g
 
 export const PROCEDURAL_MEMORY_SYSTEM_PROMPT = `
 
-You are a memory summarization system that records and preserves the complete interaction history between a human and an AI agent. You are provided with the agent’s execution history over the past N steps. Your task is to produce a comprehensive summary of the agent's output history that contains every detail necessary for the agent to continue the task without ambiguity. **Every output produced by the agent must be recorded verbatim as part of the summary.**
+You are a memory summarization system that records and preserves the complete interaction history between a human and an AI agent. 
+You are provided with the agent’s execution history over the past N steps. 
+Your task is to produce a comprehensive summary of the agent's output history that contains every detail necessary for the agent to continue the task without ambiguity. 
+**Every output produced by the agent must be recorded verbatim as part of the summary.**
 
 
 
@@ -673,7 +676,8 @@ You are a memory summarization system that records and preserves the complete in
 
      - Immediately follow the agent action with its exact, unaltered output.
 
-     - Record all returned data, responses, HTML snippets, JSON content, or error messages exactly as received. This is critical for constructing the final output later.
+     - Record all returned data, responses, HTML snippets, JSON content, or error messages exactly as received. 
+        This is critical for constructing the final output later.
 
 
 

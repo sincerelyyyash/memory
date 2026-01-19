@@ -217,6 +217,7 @@ export const askMemory = async(req: Request, res: Response) => {
             count: result.memories.length,
             model: result.model,
             rerankModel: result.rerankModel,
+            procedural: result.procedural,
         });
     }catch(err) {
         return res.status(500).json({
