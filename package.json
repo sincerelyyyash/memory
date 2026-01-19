@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "@openrouter/sdk": "^0.3.15",
+    "@prisma/client": "6",
     "@qdrant/js-client-rest": "^1.16.2",
     "@types/dotenv": "^8.2.3",
     "@types/express": "^5.0.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "openai": "^6.10.0",
+    "prisma": "6",
     "zod": "^4.1.13"
   }
 }

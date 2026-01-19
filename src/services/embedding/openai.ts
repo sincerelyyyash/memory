@@ -1,17 +1,18 @@
-import { OpenRouter } from "@openrouter/sdk";
+import OpenAI from "openai";
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "";
 
 class LLMClient {
-    private client: OpenRouter | null = null;
+    private client: OpenAI | null = null;
 
-    getClient(): OpenRouter {
+    getClient(): OpenAI {
         if(this.client) {
             return this.client;
         }
 
-        this.client = new OpenRouter({
-            apiKey: OPENROUTER_API_KEY
+        this.client = new OpenAI({
+            baseURL: "https://openrouter.ai/api/v1",
+            apiKey: OPENROUTER_API_KEY,
         });
         return this.client;
     }

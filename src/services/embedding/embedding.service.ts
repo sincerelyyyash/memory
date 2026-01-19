@@ -1,7 +1,12 @@
 import { openaiClient } from "./openai";
 import { qdrantClient } from "../vector/qdrant";
 import { generateContentHash, isValidHash } from "../../utils/hash";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../../generated/prisma";
+
+const stringToUUID = (str: string): string => {
+    const hash = generateContentHash(str);
+    return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+};
 
 
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? "";
@@ -84,9 +89,10 @@ export class EmbeddingService {
     private async retrieveExistingEmbedding(vectorId: string) {
         await qdrantClient.ensureCollection();
         const client = qdrantClient.getClient();
+        const uuidId = stringToUUID(vectorId);
 
         const result = await client.retrieve(this.collectionName, {
-            ids: [vectorId],
+            ids: [uuidId],
             with_vector: true,
         });
 
@@ -209,14 +215,16 @@ export class EmbeddingService {
             await qdrantClient.ensureCollection();
             const client = qdrantClient.getClient();
 
+            const uuidId = stringToUUID(vectorId);
             await client.upsert(this.collectionName, {
                 wait: true,
                 points: [
                     {
-                        id: vectorId,
+                        id: uuidId,
                         vector: embedding,
                         payload: {
                             ...payload,
+                            vectorId,
                             createdAt: new Date().toISOString(),
                         },
                     },
